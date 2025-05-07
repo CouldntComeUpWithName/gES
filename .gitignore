@@ -30,3 +30,24 @@
 *.exe
 *.out
 *.app
+
+# Ignore build directories and cache directories
+bin/
+bin-int/
+build/
+.vscode/
+
+# Ignore CLion project directory and iml files
+.idea/
+*.iml
+*.obj
+*.ipch
+*.pch
+
+# Ignore Visual Studio project files
+.vs/
+**.sln
+**.vcxproj
+**.vcxproj.filters
+**.vcxproj.user
+**.csproj

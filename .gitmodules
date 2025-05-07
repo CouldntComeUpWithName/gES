@@ -1,0 +1,3 @@
+[submodule "external/meta-quick"]
+	path = external/meta-quick
+	url = https://github.com/CouldntComeUpWithName/meta-quick.git
