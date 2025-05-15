@@ -31,7 +31,7 @@ namespace ges {
         .payload  = nullptr
       };
 
-      secure<event_type>().listeners.push_back(std::move(delegate));
+      secure<event_type>().listeners.push_back(delegate);
     }
     
     template<typename EventType, auto func, typename Instance>
@@ -57,7 +57,7 @@ namespace ges {
         delegate.function = wrapper;
       }
 
-      secure<event_type>().listeners.push_back(std::move(delegate));
+      secure<event_type>().listeners.push_back(delegate);
     }
 
     template<typename EventType, typename Callable>
@@ -87,7 +87,7 @@ namespace ges {
         };
       }
       
-      secure<event_type>().listeners.push_back(std::move(delegate));
+      secure<event_type>().listeners.push_back(delegate);
     }
 
     template<typename EventType, typename Callable, typename Instance>
@@ -113,7 +113,7 @@ namespace ges {
           .payload = instance,
         };
 
-        secure<event_type>().listeners.push_back(std::move(delegate));
+        secure<event_type>().listeners.push_back(delegate);
       }
       else if constexpr (std::is_empty_v<callable_type>)
       {
@@ -123,7 +123,7 @@ namespace ges {
           .payload  = instance,
         };
 
-        secure<event_type>().listeners.push_back(std::move(delegate));
+        secure<event_type>().listeners.push_back(delegate);
       }
 
     }
@@ -251,7 +251,8 @@ namespace ges {
 
       return false;
     }
-
+    
+    //TODO: potentially double free and UAF
     template<typename EventType>
     void trigger(const EventType& event)
     {
@@ -317,6 +318,7 @@ namespace ges {
 
         queue_.pop(data.info.size);
       }
+      queue_.reset();
     }
   private:
     

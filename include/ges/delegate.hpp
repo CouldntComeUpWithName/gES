@@ -17,9 +17,9 @@ namespace ges {
     void* payload;
   };
 
-  bool operator==(const event_delegate& left, const event_delegate& right)
+  inline bool operator==(const event_delegate& lhs, const event_delegate& rhs)
   {
-    return left.function == right.function && 
-      left.payload == right.payload; 
+    return lhs.function == rhs.function && 
+      lhs.payload == rhs.payload; 
   }
 }
