@@ -19,6 +19,21 @@ struct chat_message {
   std::string msg;
 };
 
+struct trivial_t {
+  int i = 0;
+};
+
+struct non_trivial {
+
+  int i = 0;
+  ~non_trivial() {
+    i++;
+    std::cout << "I'm called " << i << " times\n";
+  }
+
+};
+
+
 void on_key_event(const key_event& event)
 {
   std::cout << "key pressed: " << event.key << " " << event.pressed 
@@ -106,6 +121,8 @@ int main()
   dispatcher.listen<chat_message, &message_notifier::notify>(&notifications);
   
   dispatcher.listen<key_event, on_key_event>();
+
+
 
   dispatcher.batch<chat_message>("Tom", "Hello");
   dispatcher.batch<key_event>(1, true, true);

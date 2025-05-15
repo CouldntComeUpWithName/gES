@@ -252,15 +252,22 @@ namespace ges {
       return false;
     }
     
-    //TODO: potentially double free and UAF
     template<typename EventType>
     void trigger(const EventType& event)
     {
       using event_type = EventType;
       auto& handlers = events_.at(mq::meta<event_type>().hash).listeners;
-
-      for (auto i = handlers.size(); i; --i)
-        handlers[i - 1u](event);
+      
+      if constexpr(std::is_trivially_destructible_v<event_type>)
+      {
+        for (auto i = handlers.size(); i; --i)
+          handlers[i - 1u](&event);
+      }
+      else 
+      {
+        for (auto i = handlers.size(); i > 1; --i)
+          handlers[i - 1u](&event);
+      }
     }
     
     template<typename EventType, typename... Args>
