@@ -12,6 +12,7 @@ namespace ges {
 
   class dispatcher {
     using container_type = std::unordered_map<mq::shash_t, void>;
+    using self_type = dispatcher;
   public:
     dispatcher()
     {
@@ -19,7 +20,7 @@ namespace ges {
     }
     
     template<typename EventType, auto func>
-    void listen()
+    self_type& listen()
     {
       using event_type = EventType;
 
@@ -32,10 +33,12 @@ namespace ges {
       };
 
       secure<event_type>().listeners.push_back(delegate);
+
+      return *this;
     }
     
     template<typename EventType, auto func, typename Instance>
-    void listen(Instance* instance)
+    self_type& listen(Instance* instance)
     {
       using event_type = EventType;
       using callable_type = decltype(func);
@@ -58,15 +61,17 @@ namespace ges {
       }
 
       secure<event_type>().listeners.push_back(delegate);
+      return *this;
     }
 
     template<typename EventType, typename Callable>
-    void listen(Callable&& callable)
+    self_type& listen(Callable&& callable)
     {
       using callable_type = std::remove_reference_t<std::decay_t<Callable>>;
       using event_type = EventType;
       
-      static_assert((std::is_empty_v<callable_type> || std::is_pointer_v<callable_type>), "stateful functor objects are not supported yet");
+      static_assert((std::is_empty_v<callable_type> || std::is_pointer_v<callable_type>), 
+        "stateful functor objects are not supported yet");
 
       auto wrapper = wrap<event_type>(std::forward<Callable>(callable));
       
@@ -88,10 +93,11 @@ namespace ges {
       }
       
       secure<event_type>().listeners.push_back(delegate);
+      return *this;
     }
 
     template<typename EventType, typename Callable, typename Instance>
-    void listen(Callable&& callable, Instance* instance)
+    self_type& listen(Callable&& callable, Instance* instance)
     {
 
       using callable_type = std::remove_pointer_t<std::decay_t<Callable>>;
@@ -125,7 +131,8 @@ namespace ges {
 
         secure<event_type>().listeners.push_back(delegate);
       }
-
+      
+      return *this;
     }
 
     template<typename EventType, auto func, typename Instance = void>
@@ -276,6 +283,12 @@ namespace ges {
       queue_.push<EventType>(std::forward<Args>(args)...);
     }
 
+    template<typename EventType>
+    void enqueue(EventType&& event)
+    {
+      queue_.push<EventType>(std::forward<EventType>(event));
+    }
+
     template<typename EventType, typename... Args>
     void batch(Args&&... args)
     {
@@ -337,9 +350,9 @@ namespace ges {
 
       if (!events_.contains(type))
       {
-        auto& event = events_[type];
+        auto& event_data = events_[type];
         
-        event.info = event_info{
+        event_data.info = event_info{
           .name = mq::meta<event_type>().name,
           .type = type,
           .size = sizeof(event_type)
@@ -347,7 +360,7 @@ namespace ges {
 
         if constexpr (!std::is_trivially_destructible_v<event_type>)
         {
-          auto& listeners = event.listeners;
+          auto& listeners = event_data.listeners;
 
           if (listeners.empty())
           {
@@ -356,10 +369,10 @@ namespace ges {
               .function = destructor<event_type>(),
               .payload = nullptr
             };
-            listeners.push_back(std::move(delegate));
+            listeners.push_back(delegate);
           }
         }
-        return event;
+        return event_data;
       }
       
       return events_.at(type);

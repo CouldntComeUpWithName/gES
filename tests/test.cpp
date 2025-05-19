@@ -115,16 +115,20 @@ int main()
 
   functor functor(dispatcher);
   
-  dispatcher.listen<chat_message, show_message>();
-  dispatcher.listen<chat_message, notify_message>();
-  
-  dispatcher.listen<chat_message, &message_notifier::notify>(&notifications);
+  dispatcher
+    .listen<chat_message, show_message>()
+    .listen<chat_message, notify_message>()
+    .listen<chat_message, &message_notifier::notify>(&notifications);
   
   dispatcher.listen<key_event, on_key_event>();
 
-
-
-  dispatcher.batch<chat_message>("Tom", "Hello");
+  dispatcher.enqueue<chat_message>("Tom", "Hello");
+  
+  dispatcher.enqueue(chat_message {
+    .sender = "Tom2", 
+    .msg    = "Hello2"
+  });
+  
   dispatcher.batch<key_event>(1, true, true);
   
   dispatcher.batch<chat_message>("Liam", "How are you doing guys?");
