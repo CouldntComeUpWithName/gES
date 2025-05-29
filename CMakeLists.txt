@@ -10,6 +10,7 @@ target_sources(ges PRIVATE
   src/event_queue.cpp
   include/ges/core.hpp
   include/ges/dispatcher.hpp
+  src/dispatcher.cpp
   include/ges/event_info.hpp
   include/ges/event_queue.hpp
   include/ges/arena.hpp

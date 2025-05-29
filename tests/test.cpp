@@ -2,8 +2,12 @@
 #include <iostream>
 #include <string>
 
+ges::dispatcher dispatcher;
+
+struct dummy_event { };
+
 struct test_event {
-  std::string name = "test_event";
+  std::string name = "test event";
 };
 
 struct key_event { 
@@ -12,7 +16,7 @@ struct key_event {
   bool repeated;
 };
 
-struct close_app { };
+struct close_event { };
 
 struct chat_message {
   std::string sender;
@@ -33,7 +37,6 @@ struct non_trivial {
 
 };
 
-
 void on_key_event(const key_event& event)
 {
   std::cout << "key pressed: " << event.key << " " << event.pressed 
@@ -41,14 +44,19 @@ void on_key_event(const key_event& event)
 }
 
 int glob = 0;
-void test_event_handler(const test_event& )
+void test_event_handler(const test_event&)
 {
   std::cout << "works! " << glob++ << '\n';
 }
 
-void another_handler(const test_event&)
+void on_test(const test_event&)
 {
   std::cout << "works as well!\n";
+}
+
+void handle_test(const test_event&)
+{
+  std::cout << "handing some stuff...\n";
 }
 
 void show_message(const chat_message& event)
@@ -61,6 +69,16 @@ void notify_message(const chat_message& event)
 
 }
 
+void once(const test_event& test)
+{
+  std::cout << "once\n";
+  if(test.name == "test event")
+  {
+
+  }
+  
+}
+
 struct message_notifier {
   void notify(const chat_message& event)
   {
@@ -71,13 +89,6 @@ struct message_notifier {
   }
 private:
   uint32_t incoming = 0;
-};
-
-struct stateless {
-  void operator()(test_event)
-  {
-    std::cout << "stateless call operator\n";
-  }
 };
 
 struct functor {
@@ -107,11 +118,12 @@ struct functor {
 
 int main()
 {
-  ges::dispatcher dispatcher;
   message_notifier notifications;
-  
+
   dispatcher.listen<test_event, test_event_handler>();
-  dispatcher.listen<test_event>(another_handler);
+  dispatcher.listen<test_event, on_test>();
+  dispatcher.listen<test_event, once>();
+  dispatcher.listen<test_event, handle_test>();
 
   functor functor(dispatcher);
   
@@ -119,41 +131,42 @@ int main()
     .listen<chat_message, show_message>()
     .listen<chat_message, notify_message>()
     .listen<chat_message, &message_notifier::notify>(&notifications);
-  
-  dispatcher.listen<key_event, on_key_event>();
 
-  dispatcher.enqueue<chat_message>("Tom", "Hello");
+  dispatcher.listen<key_event, on_key_event>();
+  for (int i = 0; i < 10; i++)
+  {
+    dispatcher.batch<test_event>();
+    dispatcher.enqueue<test_event>();
+  }
+
+  dispatcher.enqueue(chat_message{ "Tom", "Hello" });
   
-  dispatcher.enqueue(chat_message {
-    .sender = "Tom2", 
-    .msg    = "Hello2"
+  dispatcher.enqueue(chat_message{
+    .sender = "Tom2",
+    .msg = "Hello2"
   });
-  
+
   dispatcher.batch<key_event>(1, true, true);
-  
+
   dispatcher.batch<chat_message>("Liam", "How are you doing guys?");
 
+  if (dispatcher.contains<test_event>())
+    std::cout << "there are test_event handlers\n";
+
+  if (dispatcher.has<test_event>())
+    std::cout << "test_event is registered, but handlers be not bound\n";
+
   dispatcher.run();
-  
-  if(dispatcher.erase<test_event>(another_handler))
-  {
-    std::cout << "another_handler is erased\n";
-  }
 
   if (dispatcher.erase<chat_message, &message_notifier::notify>(&notifications))
   {
     std::cout << "message_notifier::notify is erased\n";
   }
 
-  if (dispatcher.erase<test_event>(stateless{}))
-  {
-    std::cout << "stateless is erased\n";
-  }
+  dispatcher.clear<test_event>();
 
-  if (dispatcher.erase<test_event>(&functor))
-  {
-    std::cout << "functor is erased\n";
-  }
+  if (!dispatcher.contains<test_event>())
+    std::cout << "test_event handlers are empty\n";
 
   for (int i = 0; i < 10; i++)
   {

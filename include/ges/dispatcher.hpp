@@ -2,16 +2,14 @@
 #include "event_info.hpp"
 #include "event_queue.hpp"
 #include "delegate.hpp"
+#include "arena.hpp"
 
 #include <unordered_map>
 #include <vector>
 
-#include "arena.hpp"
-
 namespace ges {
 
   class dispatcher {
-    using container_type = std::unordered_map<mq::shash_t, void>;
     using self_type = dispatcher;
   public:
     dispatcher()
@@ -24,16 +22,7 @@ namespace ges {
     {
       using event_type = EventType;
 
-      auto* wrapper = wrap<event_type, func>();
-      
-      event_delegate delegate {
-        .handler  = wrapper,
-        .function = +func,
-        .payload  = nullptr
-      };
-
-      secure<event_type>().listeners.push_back(delegate);
-
+      secure<event_type>().listeners.push_back(wrap<event_type, func>());
       return *this;
     }
     
@@ -41,66 +30,28 @@ namespace ges {
     self_type& listen(Instance* instance)
     {
       using event_type = EventType;
-      using callable_type = decltype(func);
 
-      auto* wrapper = wrap<event_type, func>(instance);
-
-      event_delegate delegate {
-        .handler  = wrapper,
-        .function = nullptr,
-        .payload  = instance
-      };
-
-      if constexpr(std::is_function_v<callable_type>)
-      {
-        delegate.function = +func;
-      }
-      else
-      {
-        delegate.function = wrapper;
-      }
-
-      secure<event_type>().listeners.push_back(delegate);
+      secure<event_type>().listeners.push_back(wrap<event_type, func>(instance));
       return *this;
     }
 
     template<typename EventType, typename Callable>
-    self_type& listen(Callable&& callable)
+    self_type& listen(Callable callable)
     {
-      using callable_type = std::remove_reference_t<std::decay_t<Callable>>;
+      using callable_type = Callable;
       using event_type = EventType;
       
       static_assert((std::is_empty_v<callable_type> || std::is_pointer_v<callable_type>), 
         "stateful functor objects are not supported yet");
 
-      auto wrapper = wrap<event_type>(std::forward<Callable>(callable));
-      
-      event_delegate delegate = {};
-
-      if constexpr (std::is_pointer_v<callable_type>)
-      {
-        delegate = {
-          .handler  = wrapper,
-          .function = callable,
-        };
-      }
-      else if constexpr(std::is_empty_v<callable_type>)
-      {
-        delegate = {
-          .handler  = wrapper,
-          .function = wrapper,
-        };
-      }
-      
-      secure<event_type>().listeners.push_back(delegate);
+      secure<event_type>().listeners.push_back(wrap<event_type>(callable));
       return *this;
     }
 
     template<typename EventType, typename Callable, typename Instance>
-    self_type& listen(Callable&& callable, Instance* instance)
+    self_type& listen(Callable callable, Instance* instance)
     {
-
-      using callable_type = std::remove_pointer_t<std::decay_t<Callable>>;
+      using callable_type = Callable;
       using event_type = EventType;
 
       static_assert(!std::is_member_function_pointer_v<callable_type>, "you can't dynamically bind member functions. "
@@ -108,53 +59,20 @@ namespace ges {
       
       static_assert(std::is_empty_v<callable_type> || std::is_pointer_v<callable_type>, 
         "Only functor pointers, stateless functor objects and function pointers are allowed");
-      
-      auto wrapper = wrap<event_type>(std::forward<Callable>(callable), instance);
 
-      if constexpr (std::is_pointer_v<callable_type>)
-      {
-        event_delegate delegate{
-          .handler = wrapper,
-          .function = callable,
-          .payload = instance,
-        };
-
-        secure<event_type>().listeners.push_back(delegate);
-      }
-      else if constexpr (std::is_empty_v<callable_type>)
-      {
-        event_delegate delegate {
-          .handler  = wrapper,
-          .function = wrapper,
-          .payload  = instance,
-        };
-
-        secure<event_type>().listeners.push_back(delegate);
-      }
+      secure<event_type>().listeners.push_back(wrap<event_type>(callable, instance));
       
       return *this;
     }
 
-    template<typename EventType, auto func, typename Instance = void>
+    template<typename EventType, auto func>
     bool erase()
     {
       using event_type = EventType;
 
-      constexpr auto type = mq::meta<event_type>().hash;
+      auto delegate = wrap<event_type, func>();
 
-      auto& handlers = events_[type].listeners;
-      
-      auto wrapper = wrap<event_type, func>();
-
-      for (auto i = handlers.size(); i; i--)
-      {
-        if (func == handlers[i - 1u].function)
-        {
-          handlers.erase(handlers.begin() + i - 1u);
-          return true;
-        }
-      }
-      return false;
+      return try_erase_one(delegate, mq::meta<event_type>().hash);
     }
 
     template<typename EventType, auto func, typename Instance>
@@ -162,109 +80,86 @@ namespace ges {
     {
       using event_type = EventType;
 
-      constexpr auto type = mq::meta<event_type>().hash;
+      auto delegate = wrap<event_type, func>(instance);
 
-      auto wrapper = wrap<event_type, func>(instance);
-
-      auto& handlers = events_[type].listeners;
-
-      for (auto i = handlers.size(); i; i--)
-      {
-        if (wrapper == handlers[i - 1u].function)
-        {
-          handlers.erase(handlers.begin() + i - 1u);
-          return true;
-        }
-      }
-      return false;
+      return try_erase_one(delegate, mq::meta<event_type>().hash);
     }
 
-    template<typename EventType, typename Callable, typename Instance = void>
-    bool erase(Callable&& callable)
+    template<typename EventType, typename Callable>
+    bool erase(Callable callable)
     {
-      using callable_type = std::decay_t<Callable>;
-      using event_type = EventType;
+      using callable_type = Callable;
+      using event_type    = EventType;
 
-      constexpr auto type = mq::meta<event_type>().hash;
-
-      auto wrapper = wrap<event_type>(std::forward<Callable>(callable));
-
-      auto& handlers = events_[type].listeners;
-
-      if constexpr(std::is_pointer_v<callable_type>)
-      {
-        for (auto i = handlers.size(); i; i--)
-        {
-          if (callable == handlers[i - 1u].function)
-          {
-            handlers.erase(handlers.begin() + i - 1u);
-            return true;
-          }
-        }
-      }
-      if constexpr(std::is_empty_v<callable_type>)
-      {
-        for (auto i = handlers.size(); i; i--)
-        {
-          if (wrapper == handlers[i - 1u].function)
-          {
-            handlers.erase(handlers.begin() + i - 1u);
-            return true;
-          }
-        }
-      }
+      auto delegate = wrap<event_type>(callable);
       
-      return false;
+      return try_erase_one(delegate, mq::meta<event_type>().hash);
     }
     
     template<typename EventType, typename Callable, typename Instance>
-    bool erase(Callable&& callable, Instance* instance)
+    bool erase(Callable callable, Instance* instance)
     {
-      using event_type = EventType;
-      using callable_type = std::decay_t<Callable>;
+      using event_type    = EventType;
+      using callable_type = Callable;
 
-      constexpr auto type = mq::meta<event_type>().hash;
-
-      auto wrapper = wrap<event_type>(std::forward<Callable>(callable), instance);
-
-      auto& handlers = events_[type].listeners;
+      auto delegate = wrap<event_type>(callable, instance);
       
-      if constexpr (std::is_pointer_v<callable_type>)
-      {
-        for (auto i = handlers.size(); i; i--)
-        {
-          auto& handler = handlers[i - 1u];
-
-          if (callable == handler.function && instance == handler.payload)
-          {
-            handlers.erase(handlers.begin() + i - 1u);
-            return true;
-          }
-        }
-      }
-      else if constexpr(std::is_empty_v<callable_type>)
-      {
-        for (auto i = handlers.size(); i; i--)
-        {
-          auto& handler = handlers[i - 1u];
-
-          if (wrapper == handler.function && instance == handler.payload)
-          {
-            handlers.erase(handlers.begin() + i - 1u);
-            return true;
-          }
-        }
-      }
-
-      return false;
+      return try_erase_one(delegate, mq::meta<event_type>().hash);
     }
     
+    template<typename EventType>
+    void clear()
+    {
+      using event_type = EventType;
+      
+      auto iter = events_.find(mq::meta<event_type>().hash);
+
+      if(iter == events_.end())
+        return;
+      
+      auto& handlers = iter->second.listeners;
+      handlers.clear();
+    }
+
+    template<typename EventType>
+    bool contains()
+    {
+      using event_type = EventType;
+      
+      auto iter = events_.find(mq::meta<event_type>::hash);
+
+      if(iter == events_.end())
+        return false;
+
+      auto& handlers = iter->second.listeners;
+
+      return !handlers.empty();
+    }
+
+    template<typename EventType>
+    bool has()
+    {
+      using event_type = EventType;
+
+      auto iter = events_.find(mq::meta<event_type>::hash);
+      
+      return iter != events_.end();
+    }
+
     template<typename EventType>
     void trigger(const EventType& event)
     {
       using event_type = EventType;
-      auto& handlers = events_.at(mq::meta<event_type>().hash).listeners;
       
+      auto iter = events_.find(mq::meta<event_type>().hash);
+      
+      if(iter == events_.end())
+      {
+        return;
+      }
+      
+      auto& handlers = iter->second.listeners;
+
       if constexpr(std::is_trivially_destructible_v<event_type>)
       {
         for (auto i = handlers.size(); i; --i)
@@ -297,62 +192,29 @@ namespace ges {
       data.pool.construct<EventType>(std::forward<Args>(args)...);
     }
     
-    void run()
+    template<typename EventType>
+    void batch(EventType&& event)
     {
-      for (auto& batch : events_)
-      {
-        auto& pool = batch.second.pool;
-        auto& info = batch.second.info;
-        auto& handlers = batch.second.listeners;
+      auto& data = events_.at(mq::meta<EventType>::hash);
 
-        auto size = pool.size();
-        for (size_t i = 0; i < size; i += info.size)
-        {
-          for (auto pos = handlers.size(); pos; --pos)
-          {
-            auto& handler = handlers[pos - 1u];
-            const void* event = pool.get(i);
-            handler(event);
-          }
-        }
-
-        pool.reset();
-      }
-      
-      while (!queue_.empty())
-      {
-        const uint32_t& type = queue_.check();
-
-        auto& data = events_.at(type);
-        
-        const void* event = queue_.peek();
-
-        auto& handlers = data.listeners;
-        
-        auto size = handlers.size();
-        for (auto pos = size; pos; --pos)
-        {
-          auto& handler = handlers[pos - 1u];
-          handler(event);
-        }
-
-        queue_.pop(data.info.size);
-      }
-      queue_.reset();
+      data.pool.construct<EventType>(std::forward<EventType>(event));
     }
-  private:
     
+    void run();
+    
+  private:
     template<typename EventType>
     auto& secure()
     {
       using event_type = EventType;
       constexpr auto type = mq::meta<event_type>().hash;
 
-      if (!events_.contains(type))
+      auto iter = events_.find(type);
+      if (iter == events_.end())
       {
         auto& event_data = events_[type];
         
-        event_data.info = event_info{
+        event_data.info = event_info {
           .name = mq::meta<event_type>().name,
           .type = type,
           .size = sizeof(event_type)
@@ -364,18 +226,18 @@ namespace ges {
 
           if (listeners.empty())
           {
-            event_delegate delegate {
-              .handler = destructor<event_type>(),
+            event_delegate destroy {
+              .handler  = destructor<event_type>(),
               .function = destructor<event_type>(),
-              .payload = nullptr
+              .payload  = nullptr
             };
-            listeners.push_back(delegate);
+            listeners.push_back(destroy);
           }
         }
         return event_data;
       }
       
-      return events_.at(type);
+      return iter->second;
     }
     
     template<typename EventType>
@@ -389,60 +251,136 @@ namespace ges {
       };
     }
 
-    template<typename EventType, auto func, typename Instance = void>
+    template<typename EventType, auto func>
     auto wrap()
     {
-      return +[] (const void* event, void*, void*) mutable {
+      auto* wrapper = +[] (const void* event, void*, void*) mutable {
         func(*static_cast<const EventType*>(event));
+      };
+
+      return event_delegate {
+        .handler  = wrapper,
+        .function = func,
+        .payload  = nullptr
       };
     }
 
     template<typename EventType, auto func, typename Instance>
     auto wrap(Instance* instance)
     {
-      return +[](const void* event, void* fn, void* payload) {
-        std::invoke(func, (Instance*)payload, *static_cast<const EventType*>(event));
-      };
+      using callable_type = decltype(func);
+
+      if constexpr(std::is_member_function_pointer<callable_type>::value)
+      {
+        auto* wrapper = +[](const void* event, void* fn, void* payload) {
+          ((Instance*)payload->*func)(*static_cast<const EventType*>(event));
+        };
+
+        return event_delegate {
+          .handler  = wrapper,
+          .function = wrapper,
+          .payload  = instance
+        };
+      }
+      else 
+      {
+        auto* wrapper = +[](const void* event, void* fn, void* payload) {
+          func((Instance*)payload, *static_cast<const EventType*>(event));
+        };
+
+        return event_delegate {
+          .handler  = wrapper,
+          .function = func,
+          .payload  = instance
+        };
+      }
     }
 
-    template<typename EventType, typename Callable, typename Instance = void>
-    auto wrap(Callable&& callable)
+    template<typename EventType, typename Callable>
+    auto wrap(Callable callable)
     {
-      using callable_type = std::decay_t<Callable>;
+      using callable_type = Callable;
       using event_type    = EventType;
       
       if constexpr(std::is_pointer_v<callable_type>)
       {
-        return +[](const void* event, void* fn, void*) {
+        auto* wrapper = +[](const void* event, void* fn, void*) {
           (*(callable_type)fn)(*static_cast<const event_type*>(event));
+        };
+        
+        return event_delegate {
+          .handler  = wrapper,
+          .function = callable,
+          .payload  = nullptr
         };
       }
       else if constexpr(std::is_empty_v<callable_type>)
       {
-        return +[](const void* event, void* fn, void*) {
+        auto* wrapper = +[](const void* event, void* fn, void*) {
           callable_type{}(*static_cast<const event_type*>(event));
+        };
+
+        return event_delegate {
+          .handler  = wrapper,
+          .function = wrapper,
+          .payload  = nullptr
         };
       }
     }
     
     template<typename EventType, typename Callable, typename Instance>
-    auto wrap(Callable&& callable, Instance* instance)
+    auto wrap(Callable callable, Instance* instance)
     {
-      using callable_type = std::decay_t<Callable>;
+      using callable_type = Callable;
       using event_type    = EventType;
 
-      if constexpr(std::is_function_v<callable_type>)
+      if constexpr (std::is_pointer_v<callable_type>)
       {
-        return +[] (const void* event, void* fn, void* payload){
-          (*(callable_type*)fn)((Instance*)payload, *static_cast<const event_type*>(event));
+        auto* wrapper = +[](const void* event, void* fn, void* payload) {
+          (*(callable_type)fn)((Instance*)payload, *static_cast<const event_type*>(event));
+        };
+
+        return event_delegate {
+          .handler  = wrapper,
+          .function = callable,
+          .payload  = instance
         };
       }
-      else if constexpr(std::is_empty_v<callable_type>)
+      else if constexpr (std::is_empty_v<callable_type>)
       {
-        return +[](const void* event, void* fn, void* payload) {
+        auto* wrapper = +[](const void* event, void* fn, void* payload) {
           callable_type{}((Instance*)payload, *static_cast<const event_type*>(event));
         };
+
+        return event_delegate {
+          .handler  = wrapper,
+          .function = wrapper,
+          .payload  = instance
+        };
       }
+    }
+
+    bool try_erase_one(const event_delegate& delegate, mq::shash_t type)
+    {
+      auto iter = events_.find(type);
+
+      if (iter == events_.end())
+        return false;
+
+      auto& handlers = iter->second.listeners;
+
+      for (auto i = handlers.size(); i; i--)
+      {
+        const auto& handler = handlers[i - 1u];
+
+        if (delegate == handler)
+        {
+          handlers.erase(handlers.begin() + i - 1u);
+          return true;
+        }
+      }
+      
+      return false;
     }
 
   private:
@@ -451,9 +389,10 @@ namespace ges {
       std::vector<event_delegate> listeners;
       arena pool;
     };
-
+    
     std::unordered_map<uint32_t, event_data> events_;
     event_queue queue_;
   };
+  
 
 }// namespace ges
