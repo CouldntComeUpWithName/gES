@@ -2,11 +2,11 @@ cmake_minimum_required(VERSION 3.14)
 
 set(BUILD_TESTING OFF)
 
-project(gES)
+project(gES LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_library(ges)
+add_library(ges INTERFACE)
 
 target_sources(ges PRIVATE 
   include/ges/core.hpp
@@ -18,9 +18,7 @@ target_sources(ges PRIVATE
   include/ges/batcher.hpp
   include/ges/delegate.hpp)
 
-target_include_directories(ges PUBLIC include)
-
-target_link_libraries(ges PUBLIC meta-quick)
+target_include_directories(ges INTERFACE external/meta-quick/include INTERFACE include)
 
 add_subdirectory(external/meta-quick)
 add_subdirectory(tests)

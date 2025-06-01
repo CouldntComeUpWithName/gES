@@ -147,12 +147,14 @@ namespace ges {
     }
     
     template<typename EventType, typename... Args>
+    [[deprecated("enqueue might be inefficient and removed for such a system, maybe it\'ll stick around though")]]
     void enqueue(Args&&... args)
     {
       queue_.push<EventType>(std::forward<Args>(args)...);
     }
 
     template<typename EventType>
+    [[deprecated("enqueue might be inefficient and removed for such a system, maybe it\'ll stick around though")]]
     void enqueue(EventType&& event)
     {
       queue_.push<EventType>(std::forward<EventType>(event));

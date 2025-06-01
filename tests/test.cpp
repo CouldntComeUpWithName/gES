@@ -109,6 +109,7 @@ struct functor {
     if (dispatcher_.unlisten<test_event>(this))
     {
       std::cout << "functor is erased\n";
+
     }
   }
 
@@ -140,7 +141,7 @@ int main()
 
   dispatcher.send(key_event{ 1, true, true });
 
-  dispatcher.send<chat_message>("Liam", "How are you doing guys?");
+  dispatcher.enqueue<chat_message>("Liam", "How are you doing guys?");
 
   if (dispatcher.contains<test_event>())
     std::cout << "test_event is registered\n";
