@@ -2,7 +2,8 @@
 #include "event_info.hpp"
 #include "event_queue.hpp"
 #include "delegate.hpp"
-#include "arena.hpp"
+#include "batcher.hpp"
+#include "viewer.hpp"
 
 #include <unordered_map>
 #include <vector>
@@ -41,7 +42,7 @@ namespace ges {
       using callable_type = Callable;
       using event_type = EventType;
       
-      static_assert((std::is_empty_v<callable_type> || std::is_pointer_v<callable_type>), 
+      static_assert((std::is_pointer_v<callable_type> || std::is_empty_v<callable_type>), 
         "stateful functor objects are not supported yet");
 
       secure<event_type>().listeners.push_back(wrap<event_type>(callable));
@@ -57,7 +58,7 @@ namespace ges {
       static_assert(!std::is_member_function_pointer_v<callable_type>, "you can't dynamically bind member functions. "
         "Consider static linking using listen<typename EventType, auto func, typename Instance>(Instance*) instead");
       
-      static_assert(std::is_empty_v<callable_type> || std::is_pointer_v<callable_type>, 
+      static_assert(std::is_pointer_v<callable_type> || std::is_empty_v<callable_type>, 
         "Only functor pointers, stateless functor objects and function pointers are allowed");
 
       secure<event_type>().listeners.push_back(wrap<event_type>(callable, instance));
@@ -66,7 +67,7 @@ namespace ges {
     }
 
     template<typename EventType, auto func>
-    bool erase()
+    bool unlisten()
     {
       using event_type = EventType;
 
@@ -76,7 +77,7 @@ namespace ges {
     }
 
     template<typename EventType, auto func, typename Instance>
-    bool erase(Instance* instance)
+    bool unlisten(Instance* instance)
     {
       using event_type = EventType;
 
@@ -86,7 +87,7 @@ namespace ges {
     }
 
     template<typename EventType, typename Callable>
-    bool erase(Callable callable)
+    bool unlisten(Callable callable)
     {
       using callable_type = Callable;
       using event_type    = EventType;
@@ -97,7 +98,7 @@ namespace ges {
     }
     
     template<typename EventType, typename Callable, typename Instance>
-    bool erase(Callable callable, Instance* instance)
+    bool unlisten(Callable callable, Instance* instance)
     {
       using event_type    = EventType;
       using callable_type = Callable;
@@ -111,39 +112,12 @@ namespace ges {
     void clear()
     {
       using event_type = EventType;
-      
-      auto iter = events_.find(mq::meta<event_type>().hash);
 
+      auto iter = events_.find(mq::meta<event_type>().hash);
       if(iter == events_.end())
         return;
-      
-      auto& handlers = iter->second.listeners;
-      handlers.clear();
-    }
 
-    template<typename EventType>
-    bool contains()
-    {
-      using event_type = EventType;
-      
-      auto iter = events_.find(mq::meta<event_type>::hash);
-
-      if(iter == events_.end())
-        return false;
-
-      auto& handlers = iter->second.listeners;
-
-      return !handlers.empty();
-    }
-
-    template<typename EventType>
-    bool has()
-    {
-      using event_type = EventType;
-
-      auto iter = events_.find(mq::meta<event_type>::hash);
-      
-      return iter != events_.end();
+      events_.erase(iter);
     }
 
     template<typename EventType>
@@ -185,7 +159,7 @@ namespace ges {
     }
 
     template<typename EventType, typename... Args>
-    void batch(Args&&... args)
+    void send(Args&&... args)
     {
       auto& data = events_.at(mq::meta<EventType>::hash);
 
@@ -193,14 +167,89 @@ namespace ges {
     }
     
     template<typename EventType>
-    void batch(EventType&& event)
+    void send(EventType&& event)
     {
       auto& data = events_.at(mq::meta<EventType>::hash);
 
       data.pool.construct<EventType>(std::forward<EventType>(event));
     }
     
-    void run();
+    template<typename EventType>
+    bool contains()
+    {
+      using event_type = EventType;
+
+      auto iter = events_.find(mq::meta<event_type>::hash);
+      
+      return iter != events_.end();
+    }
+
+    template<typename EventType>
+    viewer<EventType> view()
+    {
+      using event_type = EventType;
+      auto iter = events_.find(mq::meta<event_type>::hash);
+  
+      if(iter == events_.end())
+        return viewer<event_type>();
+      
+      auto& arena = iter->second.pool;
+
+      auto size = arena.size() / sizeof(event_type);
+      return viewer<event_type>((event_type*)arena.data(), size);
+    }
+
+    template<typename EventType>
+    batcher<EventType> batch()
+    {
+      auto& arena = events_[mq::meta<EventType>::hash].pool;
+
+      return batcher<EventType>(arena);
+    }
+
+    void run()
+    {
+      for (auto& batch : events_)
+      {
+        auto& pool = batch.second.pool;
+        auto& info = batch.second.info;
+        auto& handlers = batch.second.listeners;
+
+        auto size = pool.size();
+        for (size_t i = 0; i < size; i += info.size)
+        {
+          for (auto pos = handlers.size(); pos; --pos)
+          {
+            auto& handler = handlers[pos - 1u];
+            const void* event = pool.get(i);
+            handler(event);
+          }
+        }
+
+        pool.reset();
+      }
+    
+      while (!queue_.empty())
+      {
+        const uint32_t& type = queue_.check();
+
+        auto& data = events_.at(type);
+        
+        const void* event = queue_.peek();
+
+        auto& handlers = data.listeners;
+        
+        auto size = handlers.size();
+        for (auto pos = size; pos; --pos)
+        {
+          auto& handler = handlers[pos - 1u];
+          handler(event);
+        }
+
+        queue_.pop(data.info.size);
+      }
+      queue_.reset();
+  }
     
   private:
     template<typename EventType>

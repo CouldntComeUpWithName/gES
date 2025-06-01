@@ -106,7 +106,7 @@ struct functor {
 
   ~functor()
   {
-    if (dispatcher_.erase<test_event>(this))
+    if (dispatcher_.unlisten<test_event>(this))
     {
       std::cout << "functor is erased\n";
     }
@@ -135,42 +135,36 @@ int main()
   dispatcher.listen<key_event, on_key_event>();
   for (int i = 0; i < 10; i++)
   {
-    dispatcher.batch<test_event>();
-    dispatcher.enqueue<test_event>();
+    dispatcher.send<test_event>();
   }
 
-  dispatcher.enqueue(chat_message{ "Tom", "Hello" });
-  
-  dispatcher.enqueue(chat_message{
-    .sender = "Tom2",
-    .msg = "Hello2"
-  });
+  dispatcher.send(key_event{ 1, true, true });
 
-  dispatcher.batch<key_event>(1, true, true);
-
-  dispatcher.batch<chat_message>("Liam", "How are you doing guys?");
+  dispatcher.send<chat_message>("Liam", "How are you doing guys?");
 
   if (dispatcher.contains<test_event>())
-    std::cout << "there are test_event handlers\n";
-
-  if (dispatcher.has<test_event>())
-    std::cout << "test_event is registered, but handlers be not bound\n";
-
+    std::cout << "test_event is registered\n";
+  
   dispatcher.run();
-
-  if (dispatcher.erase<chat_message, &message_notifier::notify>(&notifications))
+  
+  if (dispatcher.unlisten<chat_message, &message_notifier::notify>(&notifications))
   {
     std::cout << "message_notifier::notify is erased\n";
   }
-
-  dispatcher.clear<test_event>();
-
+  
   if (!dispatcher.contains<test_event>())
     std::cout << "test_event handlers are empty\n";
-
+  
+  ges::batcher test_events = dispatcher.batch<test_event>();
   for (int i = 0; i < 10; i++)
   {
-    dispatcher.batch<test_event>();
+    test_events.emplace_back("test event " + std::to_string(i));
+  }
+  
+  ges::viewer view = dispatcher.view<test_event>();
+  for(const auto& event : view)
+  {
+    std::cout << "he-he: " << event.name << std::endl;
   }
 
   dispatcher.run();

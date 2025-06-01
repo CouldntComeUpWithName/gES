@@ -61,6 +61,9 @@ namespace ges {
       }
     }
 
+    void* data() { return data_; }
+    const void* data() const { return data_; }
+
     template<typename T = void>
     T* get(size_t pos)
     {
@@ -108,6 +111,15 @@ namespace ges {
     void reset()
     {
       size_ = data_;
+    }
+    
+    void resize(size_t nsize)
+    {
+      if(nsize > capacity())
+      {
+        reserve(nsize);
+      }
+      size_ = data_ + nsize;
     }
 
     // returns capacity in bytes
