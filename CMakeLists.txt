@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 
 set(BUILD_TESTING OFF)
+set(BUILD_BENCHES ON)
 
 project(gES LANGUAGES CXX)
 
@@ -21,4 +22,14 @@ target_sources(ges PRIVATE
 target_include_directories(ges INTERFACE external/meta-quick/include INTERFACE include)
 
 add_subdirectory(external/meta-quick)
-add_subdirectory(tests)
+
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
+
+if(BUILD_BENCHES)
+  add_subdirectory(benches)
+
+
+
+endif()

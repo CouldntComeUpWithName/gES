@@ -46,4 +46,14 @@ namespace ges {
     size_type size_   = 0ull;
   };
 
+  template<typename T>
+  struct is_viewer {
+    static constexpr auto value = false; 
+  };
+
+  template<typename T>
+  struct is_viewer<viewer<T>> {
+    static constexpr auto value = true; 
+  };
+
 } // namespace ges

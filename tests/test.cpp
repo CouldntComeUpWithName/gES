@@ -56,7 +56,7 @@ void on_test(const test_event&)
 
 void handle_test(const test_event&)
 {
-  std::cout << "handing some stuff...\n";
+  
 }
 
 void show_message(const chat_message& event)
@@ -117,9 +117,21 @@ struct functor {
   ges::dispatcher& dispatcher_;
 };
 
+
+static void test_events(const ges::viewer<test_event>& view)
+{
+  for(auto& event : view)
+  {
+    handle_test(event);
+    break;
+  }
+}
+
 int main()
 {
   message_notifier notifications;
+  
+  dispatcher.listen_view<test_event, test_events>();
 
   dispatcher.listen<test_event, test_event_handler>();
   dispatcher.listen<test_event, on_test>();

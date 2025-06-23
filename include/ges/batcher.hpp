@@ -72,4 +72,15 @@ namespace ges {
   private:
     arena_type* arena_;
   };
+
+    template<typename T>
+  struct is_batcher {
+    static constexpr auto value = false; 
+  };
+
+  template<typename T>
+  struct is_batcher<batcher<T>> {
+    static constexpr auto value = true; 
+  };
+
 } // namespace ges

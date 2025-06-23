@@ -88,7 +88,7 @@ namespace ges {
       }
     }
     
-    bool empty()
+    bool empty() const
     {
       return !size();
     }

@@ -7,7 +7,7 @@ namespace ges {
   class event_queue {
     friend class dispatcher;
   public:
-    static constexpr auto PAGE_SIZE = 4096ULL;
+    static constexpr auto PAGE_SIZE = 4096ULL * 256;
     static constexpr auto MAX_SIZE = PAGE_SIZE / 4ULL;
     
     template<typename EventType, typename... Args>
@@ -61,6 +61,8 @@ namespace ges {
       size = 0;
     }
     
+    //void reserve();
+
     void release()
     {
       if(pool)
