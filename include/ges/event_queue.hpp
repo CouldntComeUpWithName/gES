@@ -23,7 +23,7 @@ namespace ges {
       auto* type = ::new(slot) mq::shash_t(mq::meta<event_type>().hash);
       
       void* event = slot + sizeof(mq::shash_t);
-
+      
       ::new(event) event_type(std::forward<Args>(args)...);
     }
 

@@ -50,7 +50,7 @@ namespace ges {
         {
           it->~event_type();
         }
-      }
+      } 
       
       arena_->clear();
     }
@@ -73,7 +73,7 @@ namespace ges {
     arena_type* arena_;
   };
 
-    template<typename T>
+  template<typename T>
   struct is_batcher {
     static constexpr auto value = false; 
   };
